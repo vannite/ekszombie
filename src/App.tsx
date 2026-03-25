@@ -5,8 +5,8 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Timer, Skull, Zap, Keyboard, Play, RotateCcw, Pause, Heart } from 'lucide-react';
-import { WORDS, TUTORIAL_DURATION, INITIAL_SPAWN_RATE, MIN_SPAWN_RATE, SPAWN_ACCELERATION, MAX_ZOMBIES_INITIAL, MAX_ZOMBIES_FINAL, EXTERN_MAX, EXTERN_DURATION, EXTERN_SPAWN_MULTIPLIER, STEP_SPEED, SPEED_INCREMENT, MAX_HEALTH, HEALTH_DRAIN_PER_SEC, HEALTH_GAIN_PER_KILL, ATTACK_DELAY_MS, GAME_WIDTH, GAME_HEIGHT } from './constants';
+import { Timer, Skull, Zap, Keyboard, Play, RotateCcw, Pause, Heart, Target, CheckCircle2, XCircle } from 'lucide-react';
+import { WORDS, TUTORIAL_DURATION, INITIAL_SPAWN_RATE, MIN_SPAWN_RATE, SPAWN_ACCELERATION, MAX_ZOMBIES_INITIAL, MAX_ZOMBIES_FINAL, EXTERN_MAX, EXTERN_DURATION, EXTERN_SPAWN_MULTIPLIER, STEP_SPEED, SPEED_INCREMENT, MAX_HEALTH, HEALTH_DRAIN_PER_SEC, HEALTH_GAIN_PER_KILL, ATTACK_DELAY_MS, GAME_WIDTH, GAME_HEIGHT, GAME_DURATION } from './constants';
 
 interface Zombie {
   id: number;
@@ -30,6 +30,7 @@ const ZOMBIE_IMAGES = [
 
 export default function App() {
   const [gameState, setGameState] = useState<'start' | 'playing' | 'gameover'>('start');
+  const [gameResult, setGameResult] = useState<'win' | 'loss' | null>(null);
   const [zombies, setZombies] = useState<Zombie[]>([]);
   const [currentInput, setCurrentInput] = useState('');
   const [score, setScore] = useState(0);
@@ -40,6 +41,7 @@ export default function App() {
   const [isPaused, setIsPaused] = useState(false);
   const [spawnRate, setSpawnRate] = useState(INITIAL_SPAWN_RATE);
   const [isPortrait, setIsPortrait] = useState(false);
+  const [isKeyboardMode, setIsKeyboardMode] = useState(false);
   const [containerScale, setContainerScale] = useState(1);
   const [canUseContinueExtern, setCanUseContinueExtern] = useState(true);
   const [viewportHeight, setViewportHeight] = useState('100vh');
@@ -62,7 +64,11 @@ export default function App() {
       const height = window.visualViewport ? window.visualViewport.height : window.innerHeight;
       const offsetTop = window.visualViewport ? window.visualViewport.offsetTop : 0;
       
-      setIsPortrait(height > width);
+      const isLandscape = width > height;
+      const keyboardActive = isLandscape && height < 500;
+      
+      setIsPortrait(!isLandscape);
+      setIsKeyboardMode(keyboardActive);
       setViewportHeight(`${height}px`);
       
       if (rootRef.current) {
@@ -73,8 +79,8 @@ export default function App() {
       const scaleX = width / GAME_WIDTH;
       const scaleY = height / GAME_HEIGHT;
       
-      // Use min scale to ensure everything fits
-      const scale = Math.min(scaleX, scaleY) * 0.98;
+      // In keyboard mode, scale to fill width and align to bottom
+      const scale = keyboardActive ? scaleX : Math.min(scaleX, scaleY) * 0.98;
       
       setContainerScale(scale);
       
@@ -125,6 +131,7 @@ export default function App() {
   // Start Game
   const startGame = () => {
     setGameState('playing');
+    setGameResult(null);
     setZombies([]);
     zombiesRef.current = [];
     setCurrentInput('');
@@ -140,13 +147,15 @@ export default function App() {
     lastSpawnRef.current = Date.now();
     lastFrameTimeRef.current = 0;
     startTimeRef.current = Date.now();
-    nextIdRef.current = 0;
+    // Do not reset nextIdRef.current to 0 to avoid duplicate keys with exiting zombies
+    if (inputRef.current) inputRef.current.value = '';
     setTimeout(focusInput, 100);
   };
 
   // Game Over
-  const gameOver = useCallback(() => {
+  const gameOver = useCallback((result: 'win' | 'loss') => {
     setGameState('gameover');
+    setGameResult(result);
     if (gameLoopRef.current) cancelAnimationFrame(gameLoopRef.current);
   }, []);
 
@@ -158,52 +167,51 @@ export default function App() {
     setZombies([]);
     zombiesRef.current = [];
     setGameState('playing');
+    setGameResult(null);
     setIsPaused(false);
     lastSpawnRef.current = Date.now();
     lastFrameTimeRef.current = 0;
+    if (inputRef.current) inputRef.current.value = '';
     // We don't reset score or time
     setTimeout(focusInput, 100);
   };
 
   // Handle Typing
-  useEffect(() => {
-    const handleInput = (val: string) => {
-      if (gameState !== 'playing' || isPaused) return;
-      
-      const newInput = val;
-      const matchedZombieIndex = zombiesRef.current.findIndex(z => z.word.toLowerCase() === newInput.toLowerCase());
-      
-      if (matchedZombieIndex !== -1) {
-        setZombies(prev => {
-          const next = prev.filter((_, i) => i !== matchedZombieIndex);
-          zombiesRef.current = next;
-          return next;
-        });
-        setScore(s => s + 1);
-        setHealth(h => Math.min(MAX_HEALTH, h + HEALTH_GAIN_PER_KILL));
-        setExternCharge(prev => Math.min(EXTERN_MAX, prev + 1));
-        setCurrentInput('');
-        currentInputRef.current = '';
-        if (inputRef.current) inputRef.current.value = '';
+  const handleTyping = useCallback((val: string) => {
+    if (gameState !== 'playing' || isPaused) return;
+    
+    const newInput = val;
+    const matchedZombieIndex = zombiesRef.current.findIndex(z => z.word.toLowerCase() === newInput.toLowerCase());
+    
+    if (matchedZombieIndex !== -1) {
+      setZombies(prev => {
+        const next = prev.filter((_, i) => i !== matchedZombieIndex);
+        zombiesRef.current = next;
+        return next;
+      });
+      setScore(s => s + 1);
+      setHealth(h => Math.min(MAX_HEALTH, h + HEALTH_GAIN_PER_KILL));
+      setExternCharge(prev => Math.min(EXTERN_MAX, prev + 1));
+      setCurrentInput('');
+      currentInputRef.current = '';
+      if (inputRef.current) inputRef.current.value = '';
+    } else {
+      const isPrefix = zombiesRef.current.some(z => z.word.toLowerCase().startsWith(newInput.toLowerCase()));
+      if (isPrefix) {
+        setCurrentInput(newInput);
+        currentInputRef.current = newInput;
       } else {
-        const isPrefix = zombiesRef.current.some(z => z.word.toLowerCase().startsWith(newInput.toLowerCase()));
-        if (isPrefix) {
+        if (newInput.length < currentInputRef.current.length) {
           setCurrentInput(newInput);
           currentInputRef.current = newInput;
-        } else {
-          // If not a prefix, reset or keep current if it was a prefix
-          // To make it feel better, we only update if it's a valid step
-          // or if the user is clearing
-          if (newInput.length < currentInputRef.current.length) {
-            setCurrentInput(newInput);
-            currentInputRef.current = newInput;
-          } else if (inputRef.current) {
-            inputRef.current.value = currentInputRef.current;
-          }
+        } else if (inputRef.current) {
+          inputRef.current.value = currentInputRef.current;
         }
       }
-    };
+    }
+  }, [gameState, isPaused]);
 
+  useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (gameState !== 'playing' || isPaused) return;
       if (e.key === 'Enter') focusInput();
@@ -225,6 +233,11 @@ export default function App() {
       const now = Date.now();
       const elapsedSeconds = Math.floor((now - startTimeRef.current) / 1000);
       setTime(elapsedSeconds);
+
+      if (elapsedSeconds >= GAME_DURATION) {
+        gameOver('win');
+        return;
+      }
 
       const isTutorial = elapsedSeconds < TUTORIAL_DURATION;
       const maxZombies = isTutorial 
@@ -313,7 +326,7 @@ export default function App() {
           setHealth(h => {
             const next = h - totalDamage;
             if (next <= 0) {
-              gameOver();
+              gameOver('loss');
               return 0;
             }
             return next;
@@ -386,7 +399,7 @@ export default function App() {
           width: `${GAME_WIDTH}px`,
           height: `${GAME_HEIGHT}px`,
           transform: `scale(${containerScale})`,
-          transformOrigin: 'center center'
+          transformOrigin: isKeyboardMode ? 'center bottom' : 'center center'
         }}
       >
         {/* Hidden Input for Mobile Keyboard */}
@@ -394,120 +407,103 @@ export default function App() {
           ref={inputRef}
           type="text"
           className="fixed top-0 left-0 w-1 h-1 opacity-0 pointer-events-none"
-          onInput={(e) => {
-            const target = e.target as HTMLInputElement;
-            const handleInput = (val: string) => {
-              if (gameState !== 'playing' || isPaused) return;
-              const newInput = val;
-              const matchedZombieIndex = zombiesRef.current.findIndex(z => z.word.toLowerCase() === newInput.toLowerCase());
-              if (matchedZombieIndex !== -1) {
-                setZombies(prev => {
-                  const next = prev.filter((_, i) => i !== matchedZombieIndex);
-                  zombiesRef.current = next;
-                  return next;
-                });
-                setScore(s => s + 1);
-                setHealth(h => Math.min(MAX_HEALTH, h + HEALTH_GAIN_PER_KILL));
-                setExternCharge(prev => Math.min(EXTERN_MAX, prev + 1));
-                setCurrentInput('');
-                currentInputRef.current = '';
-                target.value = '';
-              } else {
-                const isPrefix = zombiesRef.current.some(z => z.word.toLowerCase().startsWith(newInput.toLowerCase()));
-                if (isPrefix) {
-                  setCurrentInput(newInput);
-                  currentInputRef.current = newInput;
-                } else {
-                  if (newInput.length < currentInputRef.current.length) {
-                    setCurrentInput(newInput);
-                    currentInputRef.current = newInput;
-                  } else {
-                    target.value = currentInputRef.current;
-                  }
-                }
-              }
-            };
-            handleInput(target.value);
-          }}
+          onInput={(e) => handleTyping((e.target as HTMLInputElement).value)}
           autoCapitalize="none"
           autoCorrect="off"
           spellCheck="false"
         />
         
         {/* HUD: Top Left */}
-        <div className="absolute top-10 left-10 z-50 flex flex-col gap-4">
-          <div className="bg-zinc-900/95 border-4 border-zinc-700 p-6 rounded-2xl shadow-2xl flex items-center gap-8">
+        <div className={`absolute ${isKeyboardMode ? 'bottom-10' : 'top-10'} left-10 z-50 flex flex-col gap-4`}>
+          <div className="bg-white/10 backdrop-blur-xl border border-white/20 p-6 rounded-3xl shadow-2xl flex items-center gap-8">
             <div className="flex flex-col">
-              <span className="text-xs uppercase tracking-widest text-zinc-500 font-bold">Время выживания</span>
+              <span className="text-[10px] uppercase tracking-[0.2em] text-white/50 font-black mb-1">Осталось времени</span>
               <div className="flex items-center gap-3">
-                <Timer className="w-6 h-6 text-amber-500" />
-                <span className="text-4xl font-mono font-bold text-white">{formatTime(time)}</span>
+                <Timer className="w-6 h-6 text-orange-400" />
+                <span className="text-4xl font-mono font-black text-white">{Math.max(0, GAME_DURATION - time)}с</span>
               </div>
             </div>
-            <div className="w-px h-16 bg-zinc-700" />
+            
+            <div className="w-px h-12 bg-white/10" />
+            
             <div className="flex flex-col">
-              <span className="text-xs uppercase tracking-widest text-zinc-500 font-bold">Побеждено</span>
+              <span className="text-[10px] uppercase tracking-[0.2em] text-white/50 font-black mb-1">Сдано отчетов</span>
               <div className="flex items-center gap-3">
-                <Skull className="w-6 h-6 text-red-500" />
-                <span className="text-4xl font-mono font-bold text-white">{score}</span>
+                <Target className="w-6 h-6 text-blue-400" />
+                <span className="text-4xl font-mono font-black text-white">{score}</span>
               </div>
             </div>
-            <div className="w-px h-16 bg-zinc-700" />
-            <div className="flex flex-col">
-              <span className="text-xs uppercase tracking-widest text-zinc-500 font-bold">Здоровье</span>
-              <div className="flex items-center gap-3">
-                <div className="w-48 h-6 bg-zinc-800 rounded-full overflow-hidden border-2 border-zinc-700 relative">
+
+            <div className="w-px h-12 bg-white/10" />
+
+            <div className="flex flex-col min-w-[200px]">
+              <span className="text-[10px] uppercase tracking-[0.2em] text-white/50 font-black mb-1">Здоровье</span>
+              <div className="flex items-center gap-4">
+                <div className="flex-1 h-3 bg-white/10 rounded-full overflow-hidden border border-white/10">
                   <motion.div 
-                    className={`h-full ${health > 30 ? 'bg-green-500' : 'bg-red-500'}`}
+                    className={`h-full ${health < 30 ? 'bg-red-500 shadow-[0_0_20px_rgba(239,68,68,0.5)]' : 'bg-green-400 shadow-[0_0_20px_rgba(74,222,128,0.5)]'}`}
                     initial={{ width: '100%' }}
                     animate={{ width: `${(health / MAX_HEALTH) * 100}%` }}
                   />
                 </div>
-                <span className="text-lg font-mono font-bold text-white">{Math.ceil(health)}%</span>
+                <span className="text-xl font-mono font-black text-white">{Math.ceil(health)}%</span>
               </div>
             </div>
-            <div className="w-px h-16 bg-zinc-700" />
+
             <button 
               onClick={togglePause}
-              className="p-4 bg-zinc-800 hover:bg-zinc-700 rounded-xl transition-colors text-white"
+              className="ml-4 p-4 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl text-white transition-all active:scale-90"
             >
-              {isPaused ? <Play className="w-10 h-10 fill-current" /> : <Pause className="w-10 h-10 fill-current" />}
+              {isPaused ? <Play className="w-8 h-8 fill-current" /> : <Pause className="w-8 h-8 fill-current" />}
             </button>
           </div>
         </div>
 
-        {/* HUD: Top Right - Extern Button */}
-        <div className="absolute top-10 right-10 z-50">
+        {/* Extern Button: Top Right */}
+        <div className={`absolute ${isKeyboardMode ? 'bottom-10' : 'top-10'} right-10 z-50 flex flex-col items-center gap-3`}>
           <button 
             onClick={triggerExtern}
             disabled={externCharge < EXTERN_MAX || isExternActive}
-            className={`group relative flex flex-col items-end transition-all duration-300 ${externCharge >= EXTERN_MAX ? 'scale-110' : 'opacity-80'}`}
+            className="group relative"
           >
-            <div className="bg-zinc-900/95 border-4 border-zinc-700 p-5 rounded-2xl shadow-2xl flex items-center gap-5">
-              <div className="flex flex-col items-end">
-                <div className="h-8 mb-2 flex items-center justify-center bg-orange-500 px-4 rounded-lg text-xs font-bold text-white">EXTERN</div>
-                <div className="w-48 h-4 bg-zinc-800 rounded-full overflow-hidden border-2 border-zinc-700">
+            <div className="flex items-center gap-6 bg-white/10 backdrop-blur-3xl border border-white/20 p-3 pr-8 rounded-full shadow-2xl transition-all hover:scale-105 active:scale-95">
+              {/* Logo Area */}
+              <div className={`w-28 h-28 rounded-full flex items-center justify-center transition-all ${externCharge >= EXTERN_MAX ? 'bg-white shadow-[0_0_50px_rgba(255,255,255,0.4)] animate-pulse' : 'bg-white/10'}`}>
+                <div className="flex flex-col items-center -space-y-1 select-none">
+                  <span className="text-xl font-bold text-black tracking-tighter leading-none">Контур</span>
+                  <span className="text-2xl font-black text-[#FF6321] tracking-tighter leading-none">Экстерн</span>
+                </div>
+              </div>
+
+              {/* Charge Info */}
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center justify-between gap-4">
+                  <span className={`text-[8px] font-bold tracking-[0.3em] uppercase transition-colors ${externCharge >= EXTERN_MAX ? 'text-white' : 'text-white/30'}`}>Заряд энергии</span>
+                  {externCharge >= EXTERN_MAX && <Zap className="w-5 h-5 text-[#FF6321] fill-current" />}
+                </div>
+                <div className="w-48 h-2.5 bg-black/40 rounded-full overflow-hidden border border-white/10">
                   <motion.div 
-                    className="h-full bg-gradient-to-r from-orange-500 to-amber-400"
-                    initial={{ width: 0 }}
-                    animate={{ width: `${(externCharge / EXTERN_MAX) * 100}%` }}
+                    className="h-full bg-gradient-to-r from-[#FF6321] to-amber-400"
+                    animate={{ 
+                      width: `${(externCharge / EXTERN_MAX) * 100}%`,
+                    }}
+                    transition={{ type: 'spring', stiffness: 50 }}
                   />
                 </div>
               </div>
-              <div className={`p-4 rounded-xl transition-colors ${externCharge >= EXTERN_MAX ? 'bg-orange-500 text-white animate-pulse' : 'bg-zinc-800 text-zinc-500'}`}>
-                <Zap className="w-10 h-10" />
-              </div>
             </div>
-            {externCharge >= EXTERN_MAX && (
-              <span className="text-xs font-bold text-orange-400 mt-2 uppercase tracking-tighter animate-bounce">Нажми для очистки!</span>
-            )}
           </button>
+          
+          {/* Text under the button */}
+          <span className={`text-sm font-bold uppercase tracking-[0.2em] transition-all ${externCharge >= EXTERN_MAX ? 'text-[#FF6321] drop-shadow-[0_0_10px_rgba(255,99,33,0.3)]' : 'text-white/20'}`}>
+            свести все отчёты
+          </span>
         </div>
 
         {/* Game Area */}
         <div className="absolute inset-0 pointer-events-none">
           {/* Accountant at Desk (Left) */}
-          <div className="absolute bottom-[-10%] left-[-15%] w-[1300px] h-[1300px] z-30">
+          <div className="absolute bottom-0 left-0 w-[900px] h-[900px] z-30">
             <img 
               src="https://i.ibb.co/hxG46cfk/hero.png"
               alt="Heroine Accountant"
@@ -515,9 +511,10 @@ export default function App() {
               referrerPolicy="no-referrer"
             />
 
-            <AnimatePresence>
+            <AnimatePresence mode="popLayout">
               {currentInput && (
                 <motion.div 
+                  key="input-bubble"
                   initial={{ opacity: 0, y: 10, scale: 0.8 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.8 }}
@@ -531,10 +528,10 @@ export default function App() {
           </div>
 
           {/* Zombies (Enemies from Right) */}
-          <AnimatePresence>
+          <AnimatePresence mode="popLayout">
             {zombies.map(zombie => (
               <motion.div
-                key={zombie.id}
+                key={`zombie-${zombie.id}`}
                 initial={{ x: '2500px', opacity: 0 }}
                 animate={{ 
                   x: `${(zombie.x / 100) * GAME_WIDTH}px`, 
@@ -560,7 +557,7 @@ export default function App() {
                     <span className="text-2xl font-black text-white whitespace-nowrap uppercase tracking-tight">
                       {zombie.word.split('').map((char, i) => (
                         <span 
-                          key={i} 
+                          key={`${zombie.id}-char-${i}`} 
                           className={currentInput.toLowerCase()[i] === char.toLowerCase() ? 'text-orange-400' : 'text-white'}
                         >
                           {char}
@@ -584,154 +581,184 @@ export default function App() {
           </AnimatePresence>
         </div>
 
-        {/* Screens */}
-        <AnimatePresence>
-          {isPaused && (
-            <div className="absolute inset-0 z-[150] bg-zinc-900/40 backdrop-blur-md flex items-center justify-center p-10">
-              <motion.div 
-                initial={{ scale: 0.8, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                className="text-center max-w-full"
-              >
-                <h2 className="text-9xl font-black text-white mb-12 uppercase tracking-tighter">ПАУЗА</h2>
+      </div>
+
+      {/* MODALS & OVERLAYS (Outside Game Container for correct layering) */}
+      <AnimatePresence>
+        {/* Extern Break Overlay */}
+        {isExternActive && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] bg-orange-500/20 pointer-events-none flex items-center justify-center"
+          >
+            <motion.div 
+              initial={{ scale: 0.5, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="bg-orange-500 text-white px-16 py-8 rounded-full font-black text-7xl shadow-2xl border-8 border-white"
+            >
+              ЭКСТЕРН АКТИВИРОВАН!
+            </motion.div>
+          </motion.div>
+        )}
+
+        {isPaused && gameState === 'playing' && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-xl flex items-center justify-center p-10"
+          >
+            <div className="max-w-md w-full bg-white/10 border border-white/20 p-12 rounded-[3rem] shadow-2xl text-center backdrop-blur-3xl">
+              <div className="w-24 h-24 bg-white/10 rounded-3xl flex items-center justify-center mx-auto mb-10 border border-white/20">
+                <Pause className="w-12 h-12 text-white fill-current" />
+              </div>
+              <h2 className="text-6xl font-black text-white mb-12 uppercase tracking-tighter">ПАУЗА</h2>
+              
+              <div className="flex flex-col gap-6">
                 <button 
                   onClick={togglePause}
-                  className="bg-orange-500 hover:bg-orange-600 text-white font-bold px-20 py-8 rounded-3xl transition-all active:scale-95 flex items-center gap-6 mx-auto shadow-2xl text-4xl"
+                  className="w-full bg-white text-black font-black py-8 rounded-2xl transition-all hover:bg-orange-500 hover:text-white active:scale-95 flex items-center justify-center gap-6 shadow-2xl text-3xl uppercase tracking-widest"
                 >
-                  <Play className="w-12 h-12 fill-current" />
+                  <Play className="w-8 h-8 fill-current" />
                   ПРОДОЛЖИТЬ
                 </button>
-              </motion.div>
-            </div>
-          )}
-
-          {gameState === 'start' && (
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="absolute inset-0 z-[100] bg-zinc-900/90 backdrop-blur-md flex items-center justify-center p-10"
-            >
-              <div className="max-w-4xl w-full max-h-[95%] bg-zinc-800 border-8 border-zinc-700 p-10 rounded-[3rem] shadow-2xl overflow-y-auto custom-scrollbar">
-                <div className="flex items-center gap-10 mb-10">
-                  <div className="w-24 h-24 bg-orange-500 rounded-3xl flex items-center justify-center shadow-lg shrink-0 rotate-3">
-                    <Keyboard className="w-16 h-16 text-white" />
-                  </div>
-                  <div>
-                    <h1 className="text-6xl font-black text-white uppercase tracking-tighter leading-none mb-2">Бухгалтер против Дедлайнов</h1>
-                    <p className="text-orange-400 font-bold text-xl uppercase tracking-widest">Симулятор выживания в отчетный период</p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-8 mb-10 text-left">
-                  <div className="bg-zinc-900/50 p-8 rounded-3xl border-2 border-zinc-700">
-                    <h3 className="text-2xl text-white font-bold mb-4 flex items-center gap-4">
-                      <Zap className="w-6 h-6 text-amber-500" /> Как играть
-                    </h3>
-                    <ul className="text-zinc-400 text-lg space-y-3">
-                      <li>• Печатайте слова над зомби-отчетами, чтобы уничтожить их.</li>
-                      <li>• Не давайте им дойти до вашего стола (левый край).</li>
-                      <li>• Каждый убитый зомби восстанавливает 5% здоровья.</li>
-                    </ul>
-                  </div>
-                  <div className="bg-zinc-900/50 p-8 rounded-3xl border-2 border-zinc-700">
-                    <h3 className="text-2xl text-white font-bold mb-4 flex items-center gap-4">
-                      <Heart className="w-6 h-6 text-red-500" /> Опасности
-                    </h3>
-                    <ul className="text-zinc-400 text-lg space-y-3">
-                      <li>• У стола зомби ждут 1.5 сек, а затем начинают атаку.</li>
-                      <li>• Атака зомби быстро истощает вашу шкалу здоровья.</li>
-                      <li>• Используйте кнопку EXTERN, чтобы очистить всё поле.</li>
-                    </ul>
-                  </div>
-                </div>
-
+                
                 <button 
                   onClick={() => {
-                    startGame();
-                    inputRef.current?.focus();
+                    setIsPaused(false);
+                    setGameState('start');
                   }}
-                  className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-8 rounded-[1.5rem] transition-all active:scale-95 flex items-center justify-center gap-6 shadow-xl shadow-orange-500/20 text-4xl"
+                  className="w-full bg-white/5 text-white/60 font-black py-6 rounded-2xl transition-all hover:bg-white/10 hover:text-white active:scale-95 flex items-center justify-center gap-4 text-xl uppercase tracking-widest border border-white/10"
                 >
-                  <Play className="w-12 h-12 fill-current" />
-                  ПРИНЯТЬ ВЫЗОВ
+                  <RotateCcw className="w-6 h-6" />
+                  В МЕНЮ
                 </button>
               </div>
-            </motion.div>
-          )}
+            </div>
+          </motion.div>
+        )}
 
-          {gameState === 'gameover' && (
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="absolute inset-0 z-[100] bg-red-900/80 backdrop-blur-sm flex items-center justify-center p-10"
-            >
-              <div className="max-w-2xl w-full max-h-[95%] bg-zinc-900 border-8 border-red-500 p-10 rounded-[2.5rem] shadow-2xl text-center overflow-y-auto custom-scrollbar">
-                <div className="w-24 h-24 bg-red-500 rounded-full flex items-center justify-center mx-auto mb-8 shadow-lg animate-bounce">
-                  <Skull className="w-16 h-16 text-white" />
+        {gameState === 'start' && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-2xl flex items-center justify-center p-4"
+          >
+            <div className="max-w-4xl w-full max-h-[95vh] bg-white/10 border border-white/20 p-8 rounded-[3rem] shadow-2xl overflow-y-auto custom-scrollbar backdrop-blur-3xl">
+              <div className="flex items-center gap-8 mb-6">
+                <div className="w-20 h-20 bg-orange-500 rounded-3xl flex items-center justify-center shadow-[0_0_40px_rgba(249,115,22,0.4)] shrink-0 rotate-3">
+                  <img 
+                    src="https://s.kontur.ru/common-v2/logos/logo-extern-32.svg" 
+                    alt="Extern Logo" 
+                    className="w-12 h-12 invert brightness-0"
+                    referrerPolicy="no-referrer"
+                  />
                 </div>
-                <h2 className="text-7xl font-black text-white mb-4 uppercase tracking-tighter">ВЫ ЗАВАЛЕНЫ!</h2>
-                <p className="text-2xl text-red-200 mb-10">Налоговая проверка добралась до вас. Отчетность не сдана.</p>
-                
-                <div className="grid grid-cols-2 gap-6 mb-10">
-                  <div className="bg-zinc-800 p-6 rounded-3xl border-2 border-zinc-700">
-                    <span className="text-lg uppercase text-zinc-500 font-bold block mb-1">Время</span>
-                    <span className="text-4xl font-mono font-bold text-white">{formatTime(time)}</span>
-                  </div>
-                  <div className="bg-zinc-800 p-6 rounded-3xl border-2 border-zinc-700">
-                    <span className="text-lg uppercase text-zinc-500 font-bold block mb-1">Сдано отчетов</span>
-                    <span className="text-4xl font-mono font-bold text-white">{score}</span>
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-5">
-                  {canUseContinueExtern && (
-                    <button 
-                      onClick={continueWithExtern}
-                      className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-6 rounded-2xl transition-all active:scale-95 flex flex-col items-center justify-center gap-1 shadow-lg shadow-orange-500/20 text-2xl border-4 border-orange-400"
-                    >
-                      <div className="flex items-center gap-4">
-                        <Zap className="w-8 h-8 fill-current" />
-                        <span>ПОДКЛЮЧИТЬ ЭКСТЕРН И ПРОДОЛЖИТЬ ИГРУ</span>
-                      </div>
-                      <span className="text-xs opacity-80 uppercase tracking-widest">Доступно 1 раз за сессию</span>
-                    </button>
-                  )}
-
-                  <button 
-                    onClick={startGame}
-                    className="w-full bg-white hover:bg-zinc-200 text-zinc-900 font-bold py-6 rounded-2xl transition-all active:scale-95 flex items-center justify-center gap-6 shadow-lg text-3xl"
-                  >
-                    <RotateCcw className="w-8 h-8" />
-                    ПОПРОБОВАТЬ СНОВА
-                  </button>
+                <div>
+                  <h1 className="text-5xl font-black text-white uppercase tracking-tighter leading-none mb-1">БУХГАЛТЕР <span className="text-orange-500">VS</span> ДЕДЛАЙН</h1>
+                  <p className="text-white/40 font-black text-sm uppercase tracking-[0.3em]">Симулятор выживания в отчетный период</p>
                 </div>
               </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
 
+              <div className="grid grid-cols-2 gap-6 mb-6 text-left">
+                <div className="bg-white/5 p-5 rounded-[2rem] border border-white/10">
+                  <h3 className="text-lg text-white font-black mb-3 flex items-center gap-3 uppercase tracking-wider">
+                    <Zap className="w-5 h-5 text-amber-500" /> Как играть
+                  </h3>
+                  <ul className="text-white/60 text-sm space-y-2 font-medium">
+                    <li className="flex gap-2"><span className="text-orange-500">01.</span> Печатайте слова над зомби-отчетами.</li>
+                    <li className="flex gap-2"><span className="text-orange-500">02.</span> У вас есть ровно 20 секунд, чтобы сдать всё.</li>
+                    <li className="flex gap-2"><span className="text-orange-500">03.</span> Каждый убитый зомби восстанавливает 5% здоровья.</li>
+                  </ul>
+                </div>
+                <div className="bg-white/5 p-5 rounded-[2rem] border border-white/10">
+                  <h3 className="text-lg text-white font-black mb-3 flex items-center gap-3 uppercase tracking-wider">
+                    <Heart className="w-5 h-5 text-red-500" /> Опасности
+                  </h3>
+                  <ul className="text-white/60 text-sm space-y-2 font-medium">
+                    <li className="flex gap-2"><span className="text-red-500">!</span> Зомби атакуют ваш стол, если дойдут.</li>
+                    <li className="flex gap-2"><span className="text-red-500">!</span> Атака быстро истощает здоровье.</li>
+                    <li className="flex gap-2"><span className="text-red-500">!</span> Если здоровье упадет до 0 — вы проиграли.</li>
+                  </ul>
+                </div>
+              </div>
 
-        {/* Extern Break Overlay */}
-        <AnimatePresence>
-          {isExternActive && (
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="absolute inset-0 z-[60] bg-orange-500/20 pointer-events-none flex items-center justify-center"
-            >
-              <motion.div 
-                initial={{ scale: 0.5, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                className="bg-orange-500 text-white px-16 py-8 rounded-full font-black text-7xl shadow-2xl border-8 border-white"
+              <button 
+                onClick={() => {
+                  startGame();
+                  inputRef.current?.focus();
+                }}
+                className="w-full bg-white text-black font-black py-6 rounded-[1.5rem] transition-all hover:bg-orange-500 hover:text-white active:scale-95 flex items-center justify-center gap-4 shadow-2xl text-3xl uppercase tracking-widest"
               >
-                ЭКСТЕРН АКТИВИРОВАН!
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+                <Play className="w-10 h-10 fill-current" />
+                НАЧАТЬ ОТЧЕТ
+              </button>
+            </div>
+          </motion.div>
+        )}
+
+        {gameState === 'gameover' && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className={`fixed inset-0 z-[100] ${gameResult === 'win' ? 'bg-green-950/80' : 'bg-red-950/80'} backdrop-blur-2xl flex items-center justify-center p-4`}
+          >
+            <div className={`max-w-2xl w-full max-h-[95vh] bg-white/10 border ${gameResult === 'win' ? 'border-green-500/50' : 'border-red-500/50'} p-8 rounded-[3rem] shadow-2xl text-center overflow-y-auto custom-scrollbar backdrop-blur-3xl`}>
+              <div className={`w-20 h-20 ${gameResult === 'win' ? 'bg-green-500 shadow-[0_0_40px_rgba(34,197,94,0.4)]' : 'bg-red-500 shadow-[0_0_40px_rgba(239,68,68,0.4)]'} rounded-full flex items-center justify-center mx-auto mb-4`}>
+                {gameResult === 'win' ? <CheckCircle2 className="w-12 h-12 text-white" /> : <XCircle className="w-12 h-12 text-white" />}
+              </div>
+              
+              <h2 className="text-5xl font-black text-white mb-2 uppercase tracking-tighter">
+                {gameResult === 'win' ? 'У ВАС ВСЁ СОШЛОСЬ!' : 'У ВАС НЕ СОШЛОСЬ!'}
+              </h2>
+              <p className="text-lg text-white/50 mb-6 font-medium">
+                {gameResult === 'win' 
+                  ? 'Все дедлайны закрыты, баланс идеален. Вы — легенда бухгалтерии!' 
+                  : 'Налоговая проверка выявила нарушения. Отчетность заблокирована.'}
+              </p>
+              
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                <div className="bg-white/5 p-5 rounded-[2rem] border border-white/10">
+                  <span className="text-[10px] uppercase tracking-[0.2em] text-white/40 font-black block mb-1">Время</span>
+                  <span className="text-3xl font-mono font-black text-white">{formatTime(time)}</span>
+                </div>
+                <div className="bg-white/5 p-5 rounded-[2rem] border border-white/10">
+                  <span className="text-[10px] uppercase tracking-[0.2em] text-white/40 font-black block mb-1">Сдано отчетов</span>
+                  <span className="text-3xl font-mono font-black text-white">{score}</span>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-4">
+                {gameResult === 'loss' && canUseContinueExtern && (
+                  <button 
+                    onClick={continueWithExtern}
+                    className="w-full bg-orange-500 text-white font-black py-4 rounded-2xl transition-all hover:bg-orange-600 active:scale-95 flex flex-col items-center justify-center gap-1 shadow-[0_0_30px_rgba(249,115,22,0.3)] text-xl border-2 border-white/20"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Zap className="w-6 h-6 fill-current" />
+                      <span>ПОДКЛЮЧИТЬ ЭКСТЕРН</span>
+                    </div>
+                    <span className="text-[10px] opacity-60 uppercase tracking-[0.2em]">Доступно 1 раз</span>
+                  </button>
+                )}
+
+                <button 
+                  onClick={startGame}
+                  className="w-full bg-white text-black font-black py-6 rounded-2xl transition-all hover:bg-zinc-200 active:scale-95 flex items-center justify-center gap-4 shadow-2xl text-2xl uppercase tracking-widest"
+                >
+                  <RotateCcw className="w-6 h-6" />
+                  НОВАЯ СМЕНА
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+
 
       {/* Orientation Lock Overlay */}
       <AnimatePresence>
@@ -740,26 +767,28 @@ export default function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 z-[200] bg-zinc-900 flex flex-col items-center justify-center p-12 text-center"
+            className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-2xl flex flex-col items-center justify-center p-12 text-center"
           >
             <motion.div
               animate={{ rotate: 90 }}
               transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" }}
-              className="mb-8"
+              className="mb-12 w-32 h-32 bg-white/10 rounded-[2.5rem] flex items-center justify-center border border-white/20 shadow-2xl"
             >
-              <RotateCcw className="w-24 h-24 text-orange-500" />
+              <RotateCcw className="w-16 h-16 text-orange-500" />
             </motion.div>
-            <h2 className="text-3xl font-black text-white mb-4 uppercase tracking-tighter">Поверните устройство</h2>
-            <p className="text-zinc-400">Для игры в "Бухгалтер против Дедлайнов" необходимо использовать горизонтальный режим.</p>
+            <h2 className="text-5xl font-black text-white mb-6 uppercase tracking-tighter">Поверните устройство</h2>
+            <p className="text-white/40 text-xl font-medium max-w-md">Для игры в "Бухгалтер против Дедлайнов" необходимо использовать горизонтальный режим.</p>
           </motion.div>
         )}
       </AnimatePresence>
 
       {/* Keyboard Hint */}
-      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 text-zinc-400/50 text-[10px] font-bold uppercase tracking-widest">
-        <Keyboard className="w-3 h-3" />
-        <span>Печатайте на клавиатуре {isPortrait ? '' : '(или нажмите на экран)'}</span>
-      </div>
+      {!isKeyboardMode && (
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 text-zinc-400/50 text-[10px] font-bold uppercase tracking-widest">
+          <Keyboard className="w-3 h-3" />
+          <span>Печатайте на клавиатуре {isPortrait ? '' : '(или нажмите на экран)'}</span>
+        </div>
+      )}
     </div>
   );
 }
