@@ -243,7 +243,7 @@ export default function App() {
         const newZombie: Zombie = {
           id: nextIdRef.current++,
           word: WORDS[Math.floor(Math.random() * WORDS.length)],
-          x: 110, // Start slightly off-screen
+          x: 130, // Start further off-screen to ensure smooth entry
           y: yOffset,
           depth: depth,
           speed: (STEP_SPEED + speedPhase * SPEED_INCREMENT) * perspectiveScale,
@@ -507,7 +507,7 @@ export default function App() {
         {/* Game Area */}
         <div className="absolute inset-0 pointer-events-none">
           {/* Accountant at Desk (Left) */}
-          <div className="absolute bottom-[-5%] left-[-5%] w-[1100px] h-[1100px] z-30">
+          <div className="absolute bottom-[-10%] left-[-15%] w-[1300px] h-[1300px] z-30">
             <img 
               src="https://i.ibb.co/hxG46cfk/hero.png"
               alt="Heroine Accountant"
@@ -521,7 +521,7 @@ export default function App() {
                   initial={{ opacity: 0, y: 10, scale: 0.8 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.8 }}
-                  className="absolute top-[20%] left-[50%] -translate-x-1/2 bg-white border-4 border-zinc-900 px-10 py-5 rounded-2xl shadow-2xl z-[60]"
+                  className="absolute top-[20%] left-[55%] -translate-x-1/2 bg-white border-4 border-zinc-900 px-10 py-5 rounded-2xl shadow-2xl z-[60]"
                 >
                   <span className="text-5xl font-mono font-bold text-zinc-900 tracking-tight">{currentInput}</span>
                   <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 w-8 h-8 bg-white border-r-4 border-b-4 border-zinc-900 rotate-45" />
@@ -535,7 +535,7 @@ export default function App() {
             {zombies.map(zombie => (
               <motion.div
                 key={zombie.id}
-                initial={{ x: '2100px', opacity: 0 }}
+                initial={{ x: '2500px', opacity: 0 }}
                 animate={{ 
                   x: `${(zombie.x / 100) * GAME_WIDTH}px`, 
                   opacity: 1,
@@ -548,7 +548,7 @@ export default function App() {
                   filter: 'brightness(5) sepia(1) hue-rotate(-50deg)'
                 }}
                 transition={{ type: 'tween', ease: 'linear', duration: 0 }}
-                className="absolute w-[220px] h-[300px] flex flex-col items-center"
+                className="absolute w-[300px] h-[400px] flex flex-col items-center"
                 style={{ 
                   bottom: `${10 + zombie.y}%`,
                   scale: zombie.scale,
