@@ -52,3 +52,6 @@ export const EXTERN_SPAWN_MULTIPLIER = 0.6; // 1.6x faster spawning during frenz
 // 92 / 8 = 11.5 units per second
 export const STEP_SPEED = 11.5; 
 export const SPEED_INCREMENT = 0.2; // even slower acceleration
+
+export const GAME_WIDTH = 1600;
+export const GAME_HEIGHT = 900;
