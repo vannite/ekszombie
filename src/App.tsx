@@ -367,10 +367,21 @@ export default function App() {
       style={{ height: viewportHeight }}
       onClick={focusInput}
     >
+      {/* Elongated Background for Mobile/Wide screens */}
+      <div className="absolute inset-0 z-0">
+        <img 
+          src="https://i.ibb.co/tTVcbsPw/generated-image-94.png"
+          alt="Office Background"
+          className="absolute inset-0 w-full h-full object-cover"
+          referrerPolicy="no-referrer"
+        />
+        <div className="absolute inset-0 bg-black/30" />
+      </div>
+
       {/* Fixed Aspect Ratio Game Container */}
       <div 
         ref={containerRef}
-        className="relative bg-[#1a1a1a] overflow-hidden shadow-2xl shrink-0"
+        className="relative overflow-hidden shrink-0 z-10"
         style={{
           width: `${GAME_WIDTH}px`,
           height: `${GAME_HEIGHT}px`,
@@ -423,16 +434,6 @@ export default function App() {
           spellCheck="false"
         />
         
-        {/* Background Layer */}
-        <div className="absolute inset-0">
-          <img 
-            src="https://i.ibb.co/PRn2Mk4/loc.png"
-            alt="Office Location"
-            className="absolute inset-0 w-full h-full object-cover"
-            referrerPolicy="no-referrer"
-          />
-        </div>
-
         {/* HUD: Top Left */}
         <div className="absolute top-10 left-10 z-50 flex flex-col gap-4">
           <div className="bg-zinc-900/95 border-4 border-zinc-700 p-6 rounded-2xl shadow-2xl flex items-center gap-8">
