@@ -669,9 +669,9 @@ export default function App() {
                     <Zap className="w-5 h-5 text-amber-500" /> Как играть
                   </h3>
                   <ul className="text-white/60 text-sm space-y-2 font-medium">
-                    <li className="flex gap-2"><span className="text-orange-500">01.</span> Печатайте слова над зомби-отчетами.</li>
+                    <li className="flex gap-2"><span className="text-orange-500">01.</span> Печатайте слова над отчетами.</li>
                     <li className="flex gap-2"><span className="text-orange-500">02.</span> У вас есть ровно 20 секунд, чтобы сдать всё.</li>
-                    <li className="flex gap-2"><span className="text-orange-500">03.</span> Каждый убитый зомби восстанавливает 5% здоровья.</li>
+                    <li className="flex gap-2"><span className="text-orange-500">03.</span> Каждый сданный отчет восстанавливает 5% здоровья.</li>
                   </ul>
                 </div>
                 <div className="bg-white/5 p-5 rounded-[2rem] border border-white/10">
@@ -679,7 +679,7 @@ export default function App() {
                     <Heart className="w-5 h-5 text-red-500" /> Опасности
                   </h3>
                   <ul className="text-white/60 text-sm space-y-2 font-medium">
-                    <li className="flex gap-2"><span className="text-red-500">!</span> Зомби атакуют ваш стол, если дойдут.</li>
+                    <li className="flex gap-2"><span className="text-red-500">!</span> Отчеты атакуют ваш стол, если дойдут.</li>
                     <li className="flex gap-2"><span className="text-red-500">!</span> Атака быстро истощает здоровье.</li>
                     <li className="flex gap-2"><span className="text-red-500">!</span> Если здоровье упадет до 0 — вы проиграли.</li>
                   </ul>
