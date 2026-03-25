@@ -42,6 +42,7 @@ export default function App() {
   const [isPortrait, setIsPortrait] = useState(false);
   const [containerScale, setContainerScale] = useState(1);
   const [canUseContinueExtern, setCanUseContinueExtern] = useState(true);
+  const [viewportHeight, setViewportHeight] = useState('100vh');
   
   const gameLoopRef = useRef<number | null>(null);
   const lastSpawnRef = useRef<number>(0);
@@ -57,10 +58,16 @@ export default function App() {
   // Adaptive Scaling Logic
   useEffect(() => {
     const handleResize = () => {
-      if (!rootRef.current) return;
-      const width = rootRef.current.clientWidth;
-      const height = rootRef.current.clientHeight;
+      const width = window.visualViewport ? window.visualViewport.width : window.innerWidth;
+      const height = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+      const offsetTop = window.visualViewport ? window.visualViewport.offsetTop : 0;
+      
       setIsPortrait(height > width);
+      setViewportHeight(`${height}px`);
+      
+      if (rootRef.current) {
+        rootRef.current.style.top = `${offsetTop}px`;
+      }
 
       // Target resolution: GAME_WIDTH x GAME_HEIGHT
       const scaleX = width / GAME_WIDTH;
@@ -70,17 +77,26 @@ export default function App() {
       const scale = Math.min(scaleX, scaleY) * 0.98;
       
       setContainerScale(scale);
+      
+      // Prevent browser from scrolling away
+      window.scrollTo(0, 0);
     };
 
-    const observer = new ResizeObserver(handleResize);
-    if (rootRef.current) observer.observe(rootRef.current);
+    const viewport = window.visualViewport;
+    if (viewport) {
+      viewport.addEventListener('resize', handleResize);
+      viewport.addEventListener('scroll', handleResize);
+    }
 
     handleResize();
     window.addEventListener('resize', handleResize);
     window.addEventListener('orientationchange', handleResize);
     
     return () => {
-      observer.disconnect();
+      if (viewport) {
+        viewport.removeEventListener('resize', handleResize);
+        viewport.removeEventListener('scroll', handleResize);
+      }
       window.removeEventListener('resize', handleResize);
       window.removeEventListener('orientationchange', handleResize);
     };
@@ -347,7 +363,8 @@ export default function App() {
   return (
     <div 
       ref={rootRef}
-      className="relative w-full h-screen overflow-hidden bg-black flex items-center justify-center font-sans touch-none"
+      className="fixed inset-0 overflow-hidden bg-black flex items-center justify-center font-sans touch-none"
+      style={{ height: viewportHeight }}
       onClick={focusInput}
     >
       {/* Fixed Aspect Ratio Game Container */}
@@ -365,7 +382,7 @@ export default function App() {
         <input
           ref={inputRef}
           type="text"
-          className="fixed top-[-100px] left-[-100px] w-10 h-10 opacity-0"
+          className="fixed top-0 left-0 w-1 h-1 opacity-0 pointer-events-none"
           onInput={(e) => {
             const target = e.target as HTMLInputElement;
             const handleInput = (val: string) => {
